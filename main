@@ -1,0 +1,790 @@
+-- Переменные
+local game = game
+local loadstring, pairs, math, table = loadstring, pairs, math, table
+local Instance, UDim2, Vector3, Color3, Enum = Instance, UDim2, Vector3, Color3, Enum
+local ColorSequence, ColorSequenceKeypoint = ColorSequence, ColorSequenceKeypoint
+local Players, RunService, Workspace = game:GetService("Players"), game:GetService("RunService"), game:GetService("Workspace")
+local task = task
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Библиотека (используем локальную версию с поддержкой RichText)
+local Library, Notifications, Themes = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/raze.pub/refs/heads/main/zzzzzz"))()
+
+-- UI элементы
+-- Теперь заголовок окна поддерживает RichText! 
+-- Можно использовать HTML теги для форматирования текста
+-- Цвет акцента по умолчанию: rgb(50, 119, 186)
+local Window = Library:Window({name = 'raze<font color="rgb(50, 119, 186)">.pub</font>'})
+
+local Tabs = {
+    Combat = Window:Tab({Name = "Combat"}),
+    Visuals = Window:Tab({Name = "Visuals"}),
+    Players = Window:Tab({Name = "Players"})
+}
+
+-- ESP система
+local ESPObjects = {}
+local HealthESPObjects = {}
+local ArmorESPObjects = {}
+
+-- Utilities
+do
+    -- Функции ESP
+    GetCharacterBounds = function(character)
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return nil end
+        
+        local minX, maxX = math.huge, -math.huge
+        local minY, maxY = math.huge, -math.huge
+        local minZ, maxZ = math.huge, -math.huge
+    
+    -- Получаем границы всех частей тела
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") and part ~= humanoidRootPart then
+            local cf = part.CFrame
+            local size = part.Size
+            
+            -- Вычисляем границы части
+            local corners = {
+                cf * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
+                cf * Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
+                cf * Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
+                cf * Vector3.new(size.X/2, size.Y/2, -size.Z/2),
+                cf * Vector3.new(-size.X/2, -size.Y/2, size.Z/2),
+                cf * Vector3.new(size.X/2, -size.Y/2, size.Z/2),
+                cf * Vector3.new(-size.X/2, size.Y/2, size.Z/2),
+                cf * Vector3.new(size.X/2, size.Y/2, size.Z/2)
+            }
+            
+            for _, corner in pairs(corners) do
+                minX = math.min(minX, corner.X)
+                maxX = math.max(maxX, corner.X)
+                minY = math.min(minY, corner.Y)
+                maxY = math.max(maxY, corner.Y)
+                minZ = math.min(minZ, corner.Z)
+                maxZ = math.max(maxZ, corner.Z)
+            end
+        end
+    end
+    
+    -- Если не нашли части, используем размер HumanoidRootPart
+    if minX == math.huge then
+        local size = humanoidRootPart.Size
+        local pos = humanoidRootPart.Position
+        return {
+            Width = size.X * 1.2,
+            Height = size.Y * 2.5
+        }
+    end
+    
+        return {
+            Width = math.max(maxX - minX, 2),
+            Height = math.max(maxY - minY, 4)
+        }
+    end
+
+    CreateBoxESP = function(player)
+    if player == LocalPlayer or ESPObjects[player] then return end
+    
+    local character = player.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    
+    -- Получаем размеры персонажа
+    local bounds = GetCharacterBounds(character)
+    if not bounds then return end
+    
+    -- Создаем ScreenGui для 2D отображения
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BoxESP_" .. player.Name
+    screenGui.Parent = game.CoreGui
+    screenGui.IgnoreGuiInset = true
+    
+    -- Создаем основной Frame для бокса
+    local boxFrame = Instance.new("Frame")
+    boxFrame.Name = "BoxFrame"
+    boxFrame.BackgroundTransparency = 1
+    boxFrame.BorderSizePixel = 0
+    boxFrame.Parent = screenGui
+    
+    -- Создаем UIStroke для основной линии
+    local stroke = Instance.new("UIStroke")
+    local boxColor = Library.Flags["box_esp_color"]
+    stroke.Color = (boxColor and boxColor.Color) or Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 2  -- Делаем чуть толще
+    stroke.LineJoinMode = Enum.LineJoinMode.Miter
+    stroke.Parent = boxFrame
+    
+    -- Создаем внутреннюю обводку (inline)
+    local inlineStroke = Instance.new("UIStroke")
+    local outlineColor = Library.Flags["box_esp_outline_color"]
+    inlineStroke.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+    inlineStroke.Thickness = 1  -- Увеличиваем до 1px
+    inlineStroke.LineJoinMode = Enum.LineJoinMode.Miter
+    inlineStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    inlineStroke.Parent = boxFrame
+    
+    -- Создаем Frame для внешней обводки
+    local outlineFrame = Instance.new("Frame")
+    outlineFrame.Name = "OutlineFrame"
+    outlineFrame.BackgroundTransparency = 1
+    outlineFrame.BorderSizePixel = 0
+    outlineFrame.Parent = screenGui
+    
+    -- Создаем внешнюю обводку (outline)
+    local outline = Instance.new("UIStroke")
+    outline.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+    outline.Thickness = 1  -- Увеличиваем до 1px
+    outline.LineJoinMode = Enum.LineJoinMode.Miter
+    outline.Parent = outlineFrame
+    
+    -- Функция обновления позиции и размера бокса
+    local function UpdateBox()
+        if not character or not character.Parent or not humanoidRootPart.Parent then
+            RemoveBoxESP(player)
+            return
+        end
+        
+        -- Получаем актуальные размеры
+        local currentBounds = GetCharacterBounds(character)
+        if not currentBounds then return end
+        
+        -- Вычисляем позицию на экране
+        local rootPos = humanoidRootPart.Position
+        local headPos = rootPos + Vector3.new(0, currentBounds.Height/2, 0)
+        local footPos = rootPos - Vector3.new(0, currentBounds.Height/2, 0)
+        
+        local headScreen, headVisible = Camera:WorldToViewportPoint(headPos)
+        local footScreen, footVisible = Camera:WorldToViewportPoint(footPos)
+        local rootScreen, rootVisible = Camera:WorldToViewportPoint(rootPos)
+        
+        if not (headVisible or footVisible or rootVisible) then
+            boxFrame.Visible = false
+            outlineFrame.Visible = false
+            return
+        end
+        
+        -- Вычисляем размеры бокса на экране
+        local boxHeight = math.abs(headScreen.Y - footScreen.Y)
+        local boxWidth = boxHeight * (currentBounds.Width / currentBounds.Height)
+        
+        -- Позиционируем бокс
+        local centerX = rootScreen.X
+        local centerY = (headScreen.Y + footScreen.Y) / 2
+        
+        -- Основной бокс
+        boxFrame.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+        boxFrame.Position = UDim2.new(0, centerX - boxWidth/2, 0, centerY - boxHeight/2)
+        boxFrame.Visible = true
+        
+        -- Внешняя обводка (немного больше)
+        local outlineOffset = 1  -- Уменьшаем отступ для тонких линий
+        outlineFrame.Size = UDim2.new(0, boxWidth + outlineOffset*2, 0, boxHeight + outlineOffset*2)
+        outlineFrame.Position = UDim2.new(0, centerX - boxWidth/2 - outlineOffset, 0, centerY - boxHeight/2 - outlineOffset)
+        outlineFrame.Visible = true
+    end
+    
+    -- Подключаем обновление каждый кадр
+    local connection = RunService.Heartbeat:Connect(UpdateBox)
+    
+        -- Сохраняем объекты ESP
+        ESPObjects[player] = {
+            ScreenGui = screenGui,
+            BoxFrame = boxFrame,
+            OutlineFrame = outlineFrame,
+            Stroke = stroke,
+            InlineStroke = inlineStroke,
+            Outline = outline,
+            Connection = connection,
+            Character = character
+        }
+    end
+
+    RemoveBoxESP = function(player)
+        if ESPObjects[player] then
+            if ESPObjects[player].ScreenGui then
+                ESPObjects[player].ScreenGui:Destroy()
+            end
+            if ESPObjects[player].Connection then
+                ESPObjects[player].Connection:Disconnect()
+            end
+            ESPObjects[player] = nil
+        end
+    end
+
+    UpdateESPColors = function()
+        local boxColor = Library.Flags["box_esp_color"]
+        local outlineColorFlag = Library.Flags["box_esp_outline_color"]
+        
+        local newColor = (boxColor and boxColor.Color) or Color3.fromRGB(255, 255, 255)
+        local outlineColor = (outlineColorFlag and outlineColorFlag.Color) or Color3.fromRGB(0, 0, 0)
+        
+        for player, espData in pairs(ESPObjects) do
+            if espData.Stroke then
+                espData.Stroke.Color = newColor
+            end
+            if espData.InlineStroke then
+                espData.InlineStroke.Color = outlineColor
+            end
+            if espData.Outline then
+                espData.Outline.Color = outlineColor
+            end
+        end
+    end
+
+    -- Health ESP функции
+    CreateHealthESP = function(player)
+        if player == LocalPlayer or HealthESPObjects[player] then return end
+        
+        local character = player.Character
+        if not character then return end
+        
+        local humanoid = character:FindFirstChild("Humanoid")
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not humanoidRootPart then return end
+        
+        -- Создаем ScreenGui для Health ESP
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "HealthESP_" .. player.Name
+        screenGui.Parent = game.CoreGui
+        screenGui.IgnoreGuiInset = true
+        
+        -- Создаем основной Frame для бара здоровья
+        local healthBarFrame = Instance.new("Frame")
+        healthBarFrame.Name = "HealthBarFrame"
+        healthBarFrame.BackgroundTransparency = 1
+        healthBarFrame.BorderSizePixel = 0
+        healthBarFrame.Parent = screenGui
+        
+        -- Создаем фон бара (темный)
+        local healthBarBG = Instance.new("Frame")
+        healthBarBG.Name = "HealthBarBG"
+        healthBarBG.Size = UDim2.new(1, 0, 1, 0)
+        healthBarBG.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        healthBarBG.BorderSizePixel = 0
+        healthBarBG.Parent = healthBarFrame
+        
+        -- Создаем outline для фона
+        local bgOutline = Instance.new("UIStroke")
+        local outlineColor = Library.Flags["health_esp_outline_color"]
+        bgOutline.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+        bgOutline.Thickness = 1
+        bgOutline.Parent = healthBarBG
+        
+        -- Создаем бар здоровья с градиентом
+        local healthBar = Instance.new("Frame")
+        healthBar.Name = "HealthBar"
+        healthBar.Size = UDim2.new(1, 0, 1, 0)
+        healthBar.Position = UDim2.new(0, 0, 0, 0)
+        healthBar.BorderSizePixel = 0
+        healthBar.Parent = healthBarBG
+        
+        -- Создаем градиент для бара
+        local gradient = Instance.new("UIGradient")
+        gradient.Rotation = 90 -- Вертикальный градиент
+        local color1 = Library.Flags["health_esp_color1"]
+        local color2 = Library.Flags["health_esp_color2"] 
+        local color3 = Library.Flags["health_esp_color3"]
+        gradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, (color1 and color1.Color) or Color3.fromRGB(255, 0, 0)),    -- Красный (низкое HP)
+            ColorSequenceKeypoint.new(0.5, (color2 and color2.Color) or Color3.fromRGB(255, 255, 0)), -- Желтый (среднее HP)
+            ColorSequenceKeypoint.new(1, (color3 and color3.Color) or Color3.fromRGB(0, 255, 0))     -- Зеленый (высокое HP)
+        }
+        gradient.Parent = healthBar
+        
+        -- Функция обновления Health ESP
+        local function UpdateHealthBar()
+            if not character or not character.Parent or not humanoid or not humanoid.Parent then
+                RemoveHealthESP(player)
+                return
+            end
+            
+            -- Используем ту же логику что и для боксов
+            local bounds = GetCharacterBounds(character)
+            if not bounds then return end
+            
+            -- Вычисляем позицию на экране (как у боксов)
+            local rootPos = humanoidRootPart.Position
+            local headPos = rootPos + Vector3.new(0, bounds.Height/2, 0)
+            local footPos = rootPos - Vector3.new(0, bounds.Height/2, 0)
+            
+            local headScreen, headVisible = Camera:WorldToViewportPoint(headPos)
+            local footScreen, footVisible = Camera:WorldToViewportPoint(footPos)
+            local rootScreen, rootVisible = Camera:WorldToViewportPoint(rootPos)
+            
+            if not (headVisible or footVisible or rootVisible) then
+                healthBarFrame.Visible = false
+                return
+            end
+            
+            -- Вычисляем размеры как у боксов
+            local boxHeight = math.abs(headScreen.Y - footScreen.Y)
+            local boxWidth = boxHeight * (bounds.Width / bounds.Height)
+            
+            -- Позиционируем бар
+            local centerX = rootScreen.X
+            local centerY = (headScreen.Y + footScreen.Y) / 2
+            
+            -- Health бар параметры
+            local barWidth = 3 -- Тонкий бар
+            local offsetX = -8 -- Отступ слева от бокса
+            
+            -- Позиционируем health бар слева от бокса (точно такой же размер как бокс)
+            healthBarFrame.Size = UDim2.new(0, barWidth, 0, boxHeight)
+            healthBarFrame.Position = UDim2.new(0, centerX - boxWidth/2 + offsetX, 0, centerY - boxHeight/2)
+            healthBarFrame.Visible = true
+            
+            -- Обновляем размер бара в зависимости от HP
+            local healthPercent = math.max(0, math.min(1, humanoid.Health / humanoid.MaxHealth))
+            healthBar.Size = UDim2.new(1, 0, healthPercent, 0)
+            healthBar.Position = UDim2.new(0, 0, 1 - healthPercent, 0)
+        end
+        
+        -- Подключаем обновление каждый кадр
+        local connection = RunService.Heartbeat:Connect(UpdateHealthBar)
+        
+        -- Сохраняем объекты Health ESP
+        HealthESPObjects[player] = {
+            ScreenGui = screenGui,
+            HealthBarFrame = healthBarFrame,
+            HealthBarBG = healthBarBG,
+            HealthBar = healthBar,
+            Gradient = gradient,
+            BGOutline = bgOutline,
+            Connection = connection,
+            Character = character,
+            Humanoid = humanoid
+        }
+    end
+
+    RemoveHealthESP = function(player)
+        if HealthESPObjects[player] then
+            if HealthESPObjects[player].ScreenGui then
+                HealthESPObjects[player].ScreenGui:Destroy()
+            end
+            if HealthESPObjects[player].Connection then
+                HealthESPObjects[player].Connection:Disconnect()
+            end
+            HealthESPObjects[player] = nil
+        end
+    end
+
+    UpdateHealthESPColors = function()
+        local color1 = Library.Flags["health_esp_color1"]
+        local color2 = Library.Flags["health_esp_color2"]
+        local color3 = Library.Flags["health_esp_color3"]
+        local outlineColor = Library.Flags["health_esp_outline_color"]
+        
+        for player, espData in pairs(HealthESPObjects) do
+            if espData.Gradient then
+                espData.Gradient.Color = ColorSequence.new{
+                    ColorSequenceKeypoint.new(0, (color1 and color1.Color) or Color3.fromRGB(255, 0, 0)),
+                    ColorSequenceKeypoint.new(0.5, (color2 and color2.Color) or Color3.fromRGB(255, 255, 0)),
+                    ColorSequenceKeypoint.new(1, (color3 and color3.Color) or Color3.fromRGB(0, 255, 0))
+                }
+            end
+            if espData.BGOutline then
+                espData.BGOutline.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+            end
+        end
+    end
+
+    ToggleHealthESP = function(enabled)
+        if enabled then
+            -- Включаем Health ESP для всех игроков
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    CreateHealthESP(player)
+                end
+            end
+        else
+            -- Отключаем Health ESP для всех игроков
+            for player, _ in pairs(HealthESPObjects) do
+                RemoveHealthESP(player)
+            end
+        end
+    end
+
+    -- Armor ESP функции
+    CreateArmorESP = function(player)
+        if player == LocalPlayer or ArmorESPObjects[player] then return end
+        
+        local character = player.Character
+        if not character then return end
+        
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return end
+        
+        -- Ищем броню в BodyEffects
+        local bodyEffects = character:FindFirstChild("BodyEffects")
+        local armor = bodyEffects and bodyEffects:FindFirstChild("Armor")
+        if not armor or not armor:IsA("IntValue") then return end
+        
+        -- Создаем ScreenGui для Armor ESP
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "ArmorESP_" .. player.Name
+        screenGui.Parent = game.CoreGui
+        screenGui.IgnoreGuiInset = true
+        
+        -- Создаем основной Frame для бара брони
+        local armorBarFrame = Instance.new("Frame")
+        armorBarFrame.Name = "ArmorBarFrame"
+        armorBarFrame.BackgroundTransparency = 1
+        armorBarFrame.BorderSizePixel = 0
+        armorBarFrame.Parent = screenGui
+        
+        -- Создаем фон бара (темный)
+        local armorBarBG = Instance.new("Frame")
+        armorBarBG.Name = "ArmorBarBG"
+        armorBarBG.Size = UDim2.new(1, 0, 1, 0)
+        armorBarBG.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        armorBarBG.BorderSizePixel = 0
+        armorBarBG.Parent = armorBarFrame
+        
+        -- Создаем outline для фона
+        local bgOutline = Instance.new("UIStroke")
+        local outlineColor = Library.Flags["armor_esp_outline_color"]
+        bgOutline.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+        bgOutline.Thickness = 1
+        bgOutline.Parent = armorBarBG
+        
+        -- Создаем бар брони с градиентом
+        local armorBar = Instance.new("Frame")
+        armorBar.Name = "ArmorBar"
+        armorBar.Size = UDim2.new(1, 0, 1, 0)
+        armorBar.Position = UDim2.new(0, 0, 0, 0)
+        armorBar.BorderSizePixel = 0
+        armorBar.Parent = armorBarBG
+        
+        -- Создаем градиент для бара
+        local gradient = Instance.new("UIGradient")
+        gradient.Rotation = 90 -- Вертикальный градиент
+        local color1 = Library.Flags["armor_esp_color1"]
+        local color2 = Library.Flags["armor_esp_color2"] 
+        local color3 = Library.Flags["armor_esp_color3"]
+        gradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, (color1 and color1.Color) or Color3.fromRGB(100, 100, 255)),    -- Синий (низкая броня)
+            ColorSequenceKeypoint.new(0.5, (color2 and color2.Color) or Color3.fromRGB(150, 150, 255)), -- Светло-синий (средняя броня)
+            ColorSequenceKeypoint.new(1, (color3 and color3.Color) or Color3.fromRGB(200, 200, 255))     -- Белый-синий (высокая броня)
+        }
+        gradient.Parent = armorBar
+        
+        -- Функция обновления Armor ESP
+        local function UpdateArmorBar()
+            if not character or not character.Parent or not armor or not armor.Parent then
+                RemoveArmorESP(player)
+                return
+            end
+            
+            -- Используем ту же логику что и для боксов
+            local bounds = GetCharacterBounds(character)
+            if not bounds then return end
+            
+            -- Вычисляем позицию на экране (как у боксов)
+            local rootPos = humanoidRootPart.Position
+            local headPos = rootPos + Vector3.new(0, bounds.Height/2, 0)
+            local footPos = rootPos - Vector3.new(0, bounds.Height/2, 0)
+            
+            local headScreen, headVisible = Camera:WorldToViewportPoint(headPos)
+            local footScreen, footVisible = Camera:WorldToViewportPoint(footPos)
+            local rootScreen, rootVisible = Camera:WorldToViewportPoint(rootPos)
+            
+            if not (headVisible or footVisible or rootVisible) then
+                armorBarFrame.Visible = false
+                return
+            end
+            
+            -- Вычисляем размеры как у боксов
+            local boxHeight = math.abs(headScreen.Y - footScreen.Y)
+            local boxWidth = boxHeight * (bounds.Width / bounds.Height)
+            
+            -- Позиционируем бар
+            local centerX = rootScreen.X
+            local centerY = (headScreen.Y + footScreen.Y) / 2
+            
+            -- Armor бар параметры
+            local barWidth = 3 -- Тонкий бар
+            local offsetX = boxWidth/2 + 5 -- Отступ справа от бокса
+            
+            -- Позиционируем armor бар справа от бокса (точно такой же размер как бокс)
+            armorBarFrame.Size = UDim2.new(0, barWidth, 0, boxHeight)
+            armorBarFrame.Position = UDim2.new(0, centerX + offsetX, 0, centerY - boxHeight/2)
+            armorBarFrame.Visible = true
+            
+            -- Обновляем размер бара в зависимости от брони (макс 130)
+            local armorPercent = math.max(0, math.min(1, armor.Value / 130))
+            armorBar.Size = UDim2.new(1, 0, armorPercent, 0)
+            armorBar.Position = UDim2.new(0, 0, 1 - armorPercent, 0)
+        end
+        
+        -- Подключаем обновление каждый кадр
+        local connection = RunService.Heartbeat:Connect(UpdateArmorBar)
+        
+        -- Сохраняем объекты Armor ESP
+        ArmorESPObjects[player] = {
+            ScreenGui = screenGui,
+            ArmorBarFrame = armorBarFrame,
+            ArmorBarBG = armorBarBG,
+            ArmorBar = armorBar,
+            Gradient = gradient,
+            BGOutline = bgOutline,
+            Connection = connection,
+            Character = character,
+            Armor = armor
+        }
+    end
+
+    RemoveArmorESP = function(player)
+        if ArmorESPObjects[player] then
+            if ArmorESPObjects[player].ScreenGui then
+                ArmorESPObjects[player].ScreenGui:Destroy()
+            end
+            if ArmorESPObjects[player].Connection then
+                ArmorESPObjects[player].Connection:Disconnect()
+            end
+            ArmorESPObjects[player] = nil
+        end
+    end
+
+    UpdateArmorESPColors = function()
+        local color1 = Library.Flags["armor_esp_color1"]
+        local color2 = Library.Flags["armor_esp_color2"]
+        local color3 = Library.Flags["armor_esp_color3"]
+        local outlineColor = Library.Flags["armor_esp_outline_color"]
+        
+        for player, espData in pairs(ArmorESPObjects) do
+            if espData.Gradient then
+                espData.Gradient.Color = ColorSequence.new{
+                    ColorSequenceKeypoint.new(0, (color1 and color1.Color) or Color3.fromRGB(100, 100, 255)),
+                    ColorSequenceKeypoint.new(0.5, (color2 and color2.Color) or Color3.fromRGB(150, 150, 255)),
+                    ColorSequenceKeypoint.new(1, (color3 and color3.Color) or Color3.fromRGB(200, 200, 255))
+                }
+            end
+            if espData.BGOutline then
+                espData.BGOutline.Color = (outlineColor and outlineColor.Color) or Color3.fromRGB(0, 0, 0)
+            end
+        end
+    end
+
+    ToggleArmorESP = function(enabled)
+        if enabled then
+            -- Включаем Armor ESP для всех игроков
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    CreateArmorESP(player)
+                end
+            end
+        else
+            -- Отключаем Armor ESP для всех игроков
+            for player, _ in pairs(ArmorESPObjects) do
+                RemoveArmorESP(player)
+            end
+        end
+    end
+
+    ToggleBoxESP = function(enabled)
+        if enabled then
+            -- Включаем ESP для всех игроков
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    CreateBoxESP(player)
+                end
+            end
+        else
+            -- Отключаем ESP для всех игроков
+            for player, _ in pairs(ESPObjects) do
+                RemoveBoxESP(player)
+            end
+        end
+    end
+end
+
+-- Visuals вкладка
+do
+local VisualsSection = Tabs.Visuals:Section({Name = "ESP", Side = "Left"})
+
+local BoxESPToggle = VisualsSection:Toggle({
+    Name = "Box ESP",
+    Flag = "box_esp_enabled",
+    Default = false,
+    Callback = function(value)
+        local enabled = value == true or value == "true" or value == 1
+        ToggleBoxESP(enabled)
+    end
+})
+
+BoxESPToggle:Colorpicker({
+    Name = "Box Color",
+    Flag = "box_esp_color",
+    Color = Color3.fromRGB(255, 255, 255),
+    Callback = function(color, alpha)
+        UpdateESPColors()
+    end
+})
+
+BoxESPToggle:Colorpicker({
+    Name = "Outline Color",
+    Flag = "box_esp_outline_color",
+    Color = Color3.fromRGB(0, 0, 0),
+    Callback = function(color, alpha)
+        UpdateESPColors()
+    end
+})
+
+local HealthESPToggle = VisualsSection:Toggle({
+    Name = "Health ESP",
+    Flag = "health_esp_enabled",
+    Default = false,
+    Callback = function(value)
+        local enabled = value == true or value == "true" or value == 1
+        ToggleHealthESP(enabled)
+    end
+})
+
+HealthESPToggle:Colorpicker({
+    Name = "Low HP Color",
+    Flag = "health_esp_color1",
+    Color = Color3.fromRGB(255, 0, 0),
+    Callback = function(color, alpha)
+        UpdateHealthESPColors()
+    end
+})
+
+HealthESPToggle:Colorpicker({
+    Name = "Mid HP Color",
+    Flag = "health_esp_color2",
+    Color = Color3.fromRGB(255, 255, 0),
+    Callback = function(color, alpha)
+        UpdateHealthESPColors()
+    end
+})
+
+HealthESPToggle:Colorpicker({
+    Name = "High HP Color",
+    Flag = "health_esp_color3",
+    Color = Color3.fromRGB(0, 255, 0),
+    Callback = function(color, alpha)
+        UpdateHealthESPColors()
+    end
+})
+
+HealthESPToggle:Colorpicker({
+    Name = "Health Outline",
+    Flag = "health_esp_outline_color",
+    Color = Color3.fromRGB(0, 0, 0),
+    Callback = function(color, alpha)
+        UpdateHealthESPColors()
+    end
+})
+
+local ArmorESPToggle = VisualsSection:Toggle({
+    Name = "Armor ESP",
+    Flag = "armor_esp_enabled",
+    Default = false,
+    Callback = function(value)
+        local enabled = value == true or value == "true" or value == 1
+        ToggleArmorESP(enabled)
+    end
+})
+
+ArmorESPToggle:Colorpicker({
+    Name = "Low Armor Color",
+    Flag = "armor_esp_color1",
+    Color = Color3.fromRGB(100, 100, 255),
+    Callback = function(color, alpha)
+        UpdateArmorESPColors()
+    end
+})
+
+ArmorESPToggle:Colorpicker({
+    Name = "Mid Armor Color",
+    Flag = "armor_esp_color2",
+    Color = Color3.fromRGB(150, 150, 255),
+    Callback = function(color, alpha)
+        UpdateArmorESPColors()
+    end
+})
+
+ArmorESPToggle:Colorpicker({
+    Name = "High Armor Color",
+    Flag = "armor_esp_color3",
+    Color = Color3.fromRGB(200, 200, 255),
+    Callback = function(color, alpha)
+        UpdateArmorESPColors()
+    end
+})
+
+ArmorESPToggle:Colorpicker({
+    Name = "Armor Outline",
+    Flag = "armor_esp_outline_color",
+    Color = Color3.fromRGB(0, 0, 0),
+    Callback = function(color, alpha)
+        UpdateArmorESPColors()
+    end
+})
+
+    -- Функция для создания ESP для игрока
+    local function SetupPlayerESP(player)
+        if player == LocalPlayer then return end
+        
+        -- Подключаем обработчик респавна
+        player.CharacterAdded:Connect(function()
+            -- Небольшая задержка для полной загрузки персонажа
+            task.wait(0.1)
+            -- Удаляем старые ESP если есть
+            RemoveBoxESP(player)
+            RemoveHealthESP(player)
+            RemoveArmorESP(player)
+            -- Создаем новые если включены
+            if Library.Flags["box_esp_enabled"] then
+                CreateBoxESP(player)
+            end
+            if Library.Flags["health_esp_enabled"] then
+                CreateHealthESP(player)
+            end
+            if Library.Flags["armor_esp_enabled"] then
+                CreateArmorESP(player)
+            end
+        end)
+        
+        -- Если у игрока уже есть персонаж, создаем ESP сразу
+        if player.Character then
+            task.wait(0.1)
+            if Library.Flags["box_esp_enabled"] then
+                CreateBoxESP(player)
+            end
+            if Library.Flags["health_esp_enabled"] then
+                CreateHealthESP(player)
+            end
+            if Library.Flags["armor_esp_enabled"] then
+                CreateArmorESP(player)
+            end
+        end
+    end
+
+    -- Обработка подключения/отключения игроков
+    Players.PlayerAdded:Connect(SetupPlayerESP)
+
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveBoxESP(player)
+        RemoveHealthESP(player)
+        RemoveArmorESP(player)
+    end)
+
+    -- Обработка уже существующих игроков
+    for _, player in pairs(Players:GetPlayers()) do
+        SetupPlayerESP(player)
+    end
+end
+
+Library:Configs(Window)
+
+for index, value in Themes.preset do 
+    pcall(function()
+        Library:RefreshTheme(index, value)
+    end)
+end
+
