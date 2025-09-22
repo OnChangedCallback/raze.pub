@@ -1373,8 +1373,8 @@
     -- Library element functions
         function Library:Window(properties)
             local Cfg = {
-                Name = properties.Name or "nebula";
-                Size = properties.Size or dim2(0, 455, 0, 605);
+                Name = properties.Name or 'raze<font color="rgb(50, 119, 186)">.pub</font>';
+                Size = properties.Size or dim2(0, 600, 0, 605);
                 TabInfo;
                 Items = {};
             }
