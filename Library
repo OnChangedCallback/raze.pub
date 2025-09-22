@@ -1985,10 +1985,10 @@
 
             function Cfg.SetRichTitle(normalText, accentText)
                 local accentColor = themes.preset.accent
-                local hexColor = string.format("#%02X%02X%02X", 
-                    math.floor(accentColor.R * 255), 
-                    math.floor(accentColor.G * 255), 
-                    math.floor(accentColor.B * 255))
+                local r = math.floor(accentColor.R * 255)
+                local g = math.floor(accentColor.G * 255) 
+                local b = math.floor(accentColor.B * 255)
+                local hexColor = string.format("#%02X%02X%02X", r, g, b)
                 Items.UITitle.Text = normalText .. '<font color="' .. hexColor .. '">' .. accentText .. '</font>'
             end
 
