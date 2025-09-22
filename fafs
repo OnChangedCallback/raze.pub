@@ -1259,7 +1259,17 @@
         end
 
         function Library:LoadConfig(JSON) 
-            local Config = HttpService:JSONDecode(JSON)
+            if not JSON or JSON == "" then
+                return
+            end
+            
+            local success, Config = pcall(function()
+                return HttpService:JSONDecode(JSON)
+            end)
+            
+            if not success then
+                return
+            end
             
             for Idx, Value in Config do                
                 if Idx ~= "config_name_list" then 
@@ -4791,15 +4801,30 @@
             end})
 
             Section:Button({Name = "Load", Callback = function() 
-                Library:LoadConfig(readfile(Library.Directory .. "/configs/" .. ConfigText .. ".cfg"))  
-                Library:UpdateConfigList() 
-                Notifications:Create({Name = "Loaded Config (" ..  Library.Directory .. "/configs/" .. ConfigText .. ".cfg" .. ")"}) 
+                local configPath = Library.Directory .. "/configs/" .. ConfigText .. ".cfg"
+                if isfile(configPath) then
+                    local configData = readfile(configPath)
+                    if configData then
+                        Library:LoadConfig(configData)  
+                        Library:UpdateConfigList() 
+                        Notifications:Create({Name = "Loaded Config (" .. configPath .. ")"}) 
+                    else
+                        Notifications:Create({Name = "Failed to read config file!"})
+                    end
+                else
+                    Notifications:Create({Name = "Config file not found!"})
+                end
             end})
 
             Section:Button({Name = "Delete", Callback = function() 
-                delfile(Library.Directory .. "/configs/" .. ConfigText .. ".cfg")  
-                Library:UpdateConfigList() 
-                Notifications:Create({Name = "Deleted Config (" ..  Library.Directory .. "/configs/" .. ConfigText .. ".cfg" .. ")"}) 
+                local configPath = Library.Directory .. "/configs/" .. ConfigText .. ".cfg"
+                if isfile(configPath) then
+                    delfile(configPath)  
+                    Library:UpdateConfigList() 
+                    Notifications:Create({Name = "Deleted Config (" .. configPath .. ")"}) 
+                else
+                    Notifications:Create({Name = "Config file not found!"})
+                end
             end})
 
             window.Tweening = true
