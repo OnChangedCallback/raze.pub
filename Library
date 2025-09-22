@@ -27,8 +27,7 @@
         Notifications = {Notifs = {}},
         OpenElement = {}; -- type: table or userdata
         EasingStyle = Enum.EasingStyle.Quint;
-        TweeningSpeed = 0.25;
-        Windows = {}; -- Массив для хранения окон с RichText заголовками
+        TweeningSpeed = 0.25
     }
     
     local themes = {
@@ -1652,8 +1651,8 @@
                         FontFace = Library.Font;
                         TextColor3 = themes.preset.text_color;
                         BorderColor3 = rgb(0, 0, 0);
-                        Text = Cfg.Name;
                         RichText = true;
+                        Text = Cfg.Name;
                         Parent = Items.Window;
                         Name = "\0";
                         BackgroundTransparency = 1;
@@ -1983,27 +1982,6 @@
                 Items.UITitle.Text = text
             end
 
-            function Cfg.SetRichTitle(normalText, accentText)
-                local accentColor = themes.preset.accent
-                local r = math.floor(accentColor.R * 255)
-                local g = math.floor(accentColor.G * 255) 
-                local b = math.floor(accentColor.B * 255)
-                local hexColor = string.format("#%02X%02X%02X", r, g, b)
-                Items.UITitle.Text = normalText .. '<font color="' .. hexColor .. '">' .. accentText .. '</font>'
-            end
-
-            function Cfg.UpdateRichTitleColors()
-                -- Обновляет цвета в RichText заголовке при изменении темы
-                local currentText = Items.UITitle.Text
-                if currentText:find('<font color=') then
-                    local normalPart = currentText:match('^(.-)%<font')
-                    local accentPart = currentText:match('%>(.-)%</font%>')
-                    if normalPart and accentPart then
-                        Cfg.SetRichTitle(normalPart, accentPart)
-                    end
-                end
-            end
-
             function Cfg.ToggleWatermark(bool) 
                 Items.Watermark.Visible = bool
             end 
@@ -2021,9 +1999,6 @@
                 Items.Keybind_List.Visible = bool
                 print(bool)
             end
-            
-            -- Добавляем окно в массив для отслеживания RichText заголовков
-            table.insert(Library.Windows, Cfg)
             
             return setmetatable(Cfg, Library)
         end 
@@ -4862,13 +4837,7 @@
             end, Color = themes.preset.outline})
             
             Section:Label({Name = "Accent"}):Colorpicker({Flag = "Accent", Callback = function(color, alpha) 
-                Library:RefreshTheme("accent", color)
-                -- Обновляем RichText заголовки при изменении цвета акцента
-                for _, window in pairs(Library.Windows or {}) do
-                    if window.UpdateRichTitleColors then
-                        window:UpdateRichTitleColors()
-                    end
-                end
+                Library:RefreshTheme("accent", color) 
             end, Color = themes.preset.accent})
             
             Section:Label({Name = "Background"}):Colorpicker({Flag = "Background", Callback = function(color, alpha) 
