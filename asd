@@ -366,6 +366,14 @@
             return Color3.new(r, g, b), a
         end
 
+        function Library:GetAccentRGB()
+            local accentColor = themes.preset.accent
+            local r = math.floor(accentColor.R * 255)
+            local g = math.floor(accentColor.G * 255)
+            local b = math.floor(accentColor.B * 255)
+            return string.format("rgb(%d, %d, %d)", r, g, b)
+        end
+
         local ConfigHolder;
         function Library:UpdateConfigList() 
             if not ConfigHolder then 
@@ -1306,6 +1314,37 @@
             end
 
             themes.preset[theme] = color 
+            
+            -- Обновляем RichText заголовки при изменении цвета акцента
+            if theme == "accent" then
+                -- Обновляем заголовок окна, если он содержит точку
+                if Library.CurrentWindow and Library.CurrentWindow.Items and Library.CurrentWindow.Items.UITitle then
+                    local currentText = Library.CurrentWindow.Items.UITitle.Text
+                    -- Извлекаем оригинальный текст без RichText тегов
+                    local plainText = currentText:gsub('<font[^>]*>', ''):gsub('</font>', '')
+                    local dotPos = plainText:find("%.")
+                    if dotPos then
+                        local beforeDot = plainText:sub(1, dotPos - 1)
+                        local afterDot = plainText:sub(dotPos)
+                        local accentRGB = Library:GetAccentRGB()
+                        Library.CurrentWindow.Items.UITitle.Text = beforeDot .. '<font color="' .. accentRGB .. '">' .. afterDot .. '</font>'
+                    end
+                end
+                
+                -- Обновляем заголовок watermark, если он содержит точку
+                if Library.CurrentWindow and Library.CurrentWindow.Items and Library.CurrentWindow.Items.WatermarkTitle then
+                    local currentText = Library.CurrentWindow.Items.WatermarkTitle.Text
+                    -- Извлекаем оригинальный текст без RichText тегов
+                    local plainText = currentText:gsub('<font[^>]*>', ''):gsub('</font>', '')
+                    local dotPos = plainText:find("%.")
+                    if dotPos then
+                        local beforeDot = plainText:sub(1, dotPos - 1)
+                        local afterDot = plainText:sub(dotPos)
+                        local accentRGB = Library:GetAccentRGB()
+                        Library.CurrentWindow.Items.WatermarkTitle.Text = beforeDot .. '<font color="' .. accentRGB .. '">' .. afterDot .. '</font>'
+                    end
+                end
+            end
         end 
 
         function Library:Connection(signal, callback)
@@ -1979,7 +2018,17 @@
             end 
 
             function Cfg.ChangeTitle(text)
-                Items.UITitle.Text = text
+                -- Автоматически применяем RichText форматирование с цветом акцента
+                -- Ищем точку и делаем текст после неё цветом акцента
+                local dotPos = text:find("%.")
+                if dotPos then
+                    local beforeDot = text:sub(1, dotPos - 1)
+                    local afterDot = text:sub(dotPos)
+                    local accentRGB = Library:GetAccentRGB()
+                    Items.UITitle.Text = beforeDot .. '<font color="' .. accentRGB .. '">' .. afterDot .. '</font>'
+                else
+                    Items.UITitle.Text = text
+                end
             end
 
             function Cfg.ToggleWatermark(bool) 
@@ -1987,7 +2036,17 @@
             end 
 
             function Cfg.ChangeWatermarkTitle(text)
-                Items.WatermarkTitle.Text = text
+                -- Автоматически применяем RichText форматирование с цветом акцента
+                -- Ищем точку и делаем текст после неё цветом акцента
+                local dotPos = text:find("%.")
+                if dotPos then
+                    local beforeDot = text:sub(1, dotPos - 1)
+                    local afterDot = text:sub(dotPos)
+                    local accentRGB = Library:GetAccentRGB()
+                    Items.WatermarkTitle.Text = beforeDot .. '<font color="' .. accentRGB .. '">' .. afterDot .. '</font>'
+                else
+                    Items.WatermarkTitle.Text = text
+                end
             end
 
             function Cfg.ToggleStatus(bool) 
@@ -1999,6 +2058,9 @@
                 Items.Keybind_List.Visible = bool
                 print(bool)
             end
+            
+            -- Сохраняем ссылку на текущее окно для обновления RichText
+            Library.CurrentWindow = Cfg
             
             return setmetatable(Cfg, Library)
         end 
